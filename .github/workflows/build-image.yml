@@ -1,0 +1,162 @@
+name: Build e Push da Imagem Bootc
+on:
+  schedule:
+    - cron: '45 6 * * *'
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: gzsoares/bootc-cosmic
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Liberar Espaço em Disco (Maximize Space)
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          df -h
+
+      - name: Extrair Versão da Imagem Base
+        id: base_version
+        run: |
+          # Extrai a versão após o ':' e remove espaços/comentários
+          VERSION=$(grep -m 1 '^FROM' Containerfile | sed 's/.*://' | awk '{print $1}')
+          if [ -z "$VERSION" ]; then VERSION="latest"; fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Gerar Timestamp (Horário de Brasília)
+        id: timestamp
+        run: echo "date=$(TZ='America/Sao_Paulo' date +'%Y%m%d-%H%M')" >> $GITHUB_OUTPUT
+
+      - name: Login no GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | sudo buildah login \
+            -u ${{ github.actor }} \
+            --password-stdin \
+            ${{ env.REGISTRY }}
+
+      - name: Build da Imagem com Buildah
+        run: |
+          sudo buildah build \
+            --skip-unused-stages=false \
+            --security-opt=label=disable \
+            -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.base_version.outputs.version }}-${{ steps.timestamp.outputs.date }}" \
+            -f Containerfile \
+            -v $(pwd):/run/src \
+            .
+
+      - name: Aplicar Tags Adicionais
+        run: |
+          SOURCE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.base_version.outputs.version }}-${{ steps.timestamp.outputs.date }}"
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          VERSION="${{ steps.base_version.outputs.version }}"
+
+          sudo buildah tag "${SOURCE}" "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-latest"
+          sudo buildah tag "${SOURCE}" "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          sudo buildah tag "${SOURCE}" "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main"
+          sudo buildah tag "${SOURCE}" "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${SHORT_SHA}"
+
+      - name: Push de Todas as Tags
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          VERSION="${{ steps.base_version.outputs.version }}"
+          DATE="${{ steps.timestamp.outputs.date }}"
+
+          for TAG in "${VERSION}-${DATE}" "${VERSION}-latest" "latest" "main" "sha-${SHORT_SHA}"; do
+            echo "→ Pushing ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}"
+            sudo buildah push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}"
+          done
+
+      - name: Criar config.toml para o Builder
+        run: |
+          cat <<EOF > config.toml
+          [customizations.installer.modules]
+          enable = [
+            "org.fedoraproject.Anaconda.Modules.Storage",
+            "org.fedoraproject.Anaconda.Modules.Users",
+            "org.fedoraproject.Anaconda.Modules.Network",
+            "org.fedoraproject.Anaconda.Modules.Timezone"
+          ]
+
+          [customizations.installer.kickstart]
+          contents = """
+          clearpart --all --initlabel
+          zerombr
+
+          # EFI
+          part /boot/efi --fstype=efi --size=600 --fsoptions="umask=0077,shortname=winnt"
+
+          # /boot
+          part /boot --fstype=ext4 --size=2048
+
+          # Particao Btrfs unica
+          part btrfs.01 --fstype=btrfs --grow
+
+          # Volume Btrfs
+          btrfs none --label=fedora btrfs.01
+
+          # Subvolumes
+          btrfs /     --subvol --name=root LABEL=fedora
+          btrfs /var  --subvol --name=var  LABEL=fedora
+          btrfs /home --subvol --name=home LABEL=fedora
+          """
+          EOF
+
+      - name: Criar config.toml e Gerar ISO
+        run: |
+          cat <<EOF > config.toml
+          [customizations.installer.modules]
+          enable = ["org.fedoraproject.Anaconda.Modules.Storage", "org.fedoraproject.Anaconda.Modules.Users", "org.fedoraproject.Anaconda.Modules.Network", "org.fedoraproject.Anaconda.Modules.Timezone"]
+          [customizations.installer.kickstart]
+          contents = """
+          clearpart --all --initlabel
+          zerombr
+          part /boot/efi --fstype=efi --size=600 --fsoptions="umask=0077,shortname=winnt"
+          part /boot --fstype=ext4 --size=2048
+          part btrfs.01 --fstype=btrfs --grow
+          btrfs none --label=fedora btrfs.01
+          btrfs /     --subvol --name=root LABEL=fedora
+          btrfs /var  --subvol --name=var  LABEL=fedora
+          btrfs /home --subvol --name=home LABEL=fedora
+          """
+          EOF
+          
+          mkdir -p ./output
+          sudo podman run \
+            --rm --privileged --pull=newer \
+            --security-opt label=type:unconfined_t \
+            -v ./output:/output \
+            -v ./config.toml:/config.toml:ro \
+            -v /var/lib/containers/storage:/var/lib/containers/storage \
+            quay.io/centos-bootc/bootc-image-builder:latest \
+            --type anaconda-iso --rootfs btrfs \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+          # CRITICAL: Ajustar permissões para que o GitHub Action consiga ler o arquivo criado pelo root
+          sudo chown -R $USER:$USER ./output
+
+      - name: Upload da ISO (Busca Recursiva)
+        uses: actions/upload-artifact@v4
+        with:
+          name: bootc-bootc-cosmic-iso
+          # Usamos o wildcard ** para encontrar a ISO independente da subpasta (anaconda/ ou iso/)
+          path: ./output/**/install.iso
+          retention-days: 5
+          if-no-files-found: error
