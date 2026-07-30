@@ -1,0 +1,10 @@
+# Pacotes de ambiente de desktop (COSMIC)
+@cosmic-desktop-environment
+cosmic-greeter
+cosmic-files
+cosmic-term
+cosmic-edit
+libnma
+ibus-typing-booster
+ibus-gtk4
+f44-backgrounds-base

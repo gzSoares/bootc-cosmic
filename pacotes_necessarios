@@ -1,0 +1,48 @@
+# Essêncial
+@networkmanager-submodules
+@multimedia
+auditctl
+bluez
+compsize
+ffmpegthumbnailer
+flatpak
+fpaste
+gnome-disk-utility
+git
+java-25-openjdk
+spice-vdagent
+sysfsutils
+thermald
+tree
+unzip
+usbutils
+xdg-utils
+zip
+zram-generator
+
+# Pacotes essênciais para virtualização e containers
+@virtualization
+distrobox
+podman
+podman-compose
+toolbox
+
+# Pacotes não essênciais (pode ser alterado a gosto)
+adw-gtk3-theme
+bash-color-prompt
+btrfs-assistant
+dconf-editor
+fira-code-fonts
+ps_mem
+
+# Drivers da Nvidia (se você não tem nvidia, pode remover a versão é sempre a 580 negativo17)
+libva-nvidia-driver
+libnvidia-cfg
+libnvidia-gpucomp
+libnvidia-ml
+nvidia-driver-cuda-libs
+nvidia-driver-libs
+nvidia-gpu-firmware
+nvidia-modprobe
+nvidia-persistenced
+opencl-filesystem
