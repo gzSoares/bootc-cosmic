@@ -57,7 +57,7 @@ bootc status
 sudo bootc rollback
 
 # Migrar para esta imagem (primeira utilização)
-sudo bootc switch ghcr.io/gzsoares/bootc-gnome-minimal:latest
+sudo bootc switch ghcr.io/gzsoares/bootc-cosmic:latest
 ```
 
 ## Criação de ISO Personalizada
@@ -66,15 +66,15 @@ sudo bootc switch ghcr.io/gzsoares/bootc-gnome-minimal:latest
 
 ```
 # baixar os arquivos do projeto
-git clone https://github.com/gzSoares/bootc-gnome-minimal.git
-cd bootc-gnome-minimal
+git clone https://github.com/gzSoares/bootc-cosmic.git
+cd bootc-cosmic
 mkdir output
 
 # build do projeto com o buildah
 sudo buildah build \
     --skip-unused-stages=false \
     --security-opt=label=disable \
-    -t "bootc-gnome-minimal" \
+    -t "bootc-cosmic" \
     -f Containerfile \
     -v $(pwd):/run/src \
     .
@@ -95,7 +95,7 @@ sudo podman run \
     quay.io/centos-bootc/bootc-image-builder:latest \
     --type anaconda-iso \
     --rootfs btrfs \
-    localhost/bootc-gnome-minimal
+    localhost/bootc-cosmic
 ```
 
 Após a conclusão, o arquivo `output/bootiso/install.iso` estará disponível para uso na instalação do sistema.
