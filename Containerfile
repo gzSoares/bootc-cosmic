@@ -18,7 +18,7 @@ LABEL ostree.bootable="true"
 LABEL containers.bootc="1"
 
 COPY --from=builder /var/cache/akmods/nvidia/kmod-nvidia*.rpm ./
-COPY 10-nvidia-args.toml locale.conf post-install.sh pacotes_necessarios post-install.service vconsole.conf zram-generator.conf ./
+COPY 10-nvidia-args.toml locale.conf post-install.sh pacotes_necessarios pacotes_desktop post-install.service vconsole.conf zram-generator.conf ./
 
 RUN mkdir -vp /var/roothome /data /var/home && \
     dnf5 -y upgrade --refresh && \
